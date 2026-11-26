@@ -192,5 +192,58 @@ $('cancel').onclick=()=>openDay(selected);
 $('newEvent').onclick=()=>{openDay(new Date(year,month,year===current.getFullYear()&&month===current.getMonth()?current.getDate():1));showForm()};
 render();
 </script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDrDxq3AdsMhAc-OEG-0UnNPnBAMrrGofg",
+  authDomain: "family-calendar-7fd0e.firebaseapp.com",
+  projectId: "family-calendar-7fd0e",
+  storageBucket: "family-calendar-7fd0e.firebasestorage.app",
+  messagingSenderId: "628784102627",
+  appId: "1:628784102627:web:62699d6e6ea1ba606b19d6"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
+const panel = document.createElement("div");
+panel.style.cssText = "padding:12px;text-align:center;background:white";
+const button = document.createElement("button");
+button.textContent = "Sign in with Google";
+const status = document.createElement("p");
+status.textContent = "Not signed in";
+panel.append(button, status);
+document.querySelector("header").append(panel);
+
+button.addEventListener("click", async () => {
+  try {
+    if (auth.currentUser) {
+      await signOut(auth);
+    } else {
+      await signInWithPopup(auth, provider);
+    }
+  } catch (error) {
+    alert("Sign-in error: " + error.message);
+  }
+});
+
+onAuthStateChanged(auth, user => {
+  status.textContent = user
+    ? "Signed in as " + (user.displayName || user.email)
+    : "Not signed in";
+  button.textContent = user ? "Sign out" : "Sign in with Google";
+});
+</script>
+
 </body>
 </html>
