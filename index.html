@@ -1,249 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Family Calendar</title>
-<style>
-*{box-sizing:border-box}
-body{margin:0;font-family:Arial,sans-serif;background:#f8fafd;color:#202124}
-header{background:white;padding:20px;border-bottom:1px solid #ddd}
-h1{font-size:24px;margin:0 0 8px}
-header p{margin:0;color:#666;font-size:14px}
-main{max-width:1000px;margin:auto;padding:12px}
-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:14px 0}
-button{cursor:pointer;border:0;border-radius:8px;padding:12px;background:#e8f0fe;color:#174ea6;font-size:14px}
-.primary{background:#1a73e8;color:white}
-#month{font-size:19px;font-weight:bold;text-align:center}
-.calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:white;border:1px solid #dadce0;border-radius:12px;overflow:hidden}
-.weekday{text-align:center;padding:12px 0;font-size:12px;color:#666}
-.day{min-height:90px;border-top:1px solid #ddd;border-right:1px solid #ddd;padding:5px;cursor:pointer;overflow:hidden}
-.today .number{background:#1a73e8;color:white;border-radius:50%}
-.number{display:inline-block;padding:5px;font-size:13px}
-.event{font-size:10px;background:#d2e3fc;color:#174ea6;border-radius:4px;padding:4px;margin:3px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.private{background:#ceead6;color:#137333}
-.holiday{background:#fce8e6;color:#b31412}
-.overlay{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
-.hidden{display:none}
-.popup{background:white;border-radius:18px;padding:20px;width:100%;max-width:460px;max-height:90vh;overflow:auto;box-shadow:0 12px 40px #0003}
-.popup h2{font-size:20px}
-label{display:block;font-size:14px;margin-top:12px}
-input,select{width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-top:5px;background:white}
-.actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
-.entry{padding:12px 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere}
-.entry small{color:#666}
-.close{float:right}
-.danger{color:#b31412;background:#fce8e6}
-.legend{display:flex;gap:16px;font-size:12px;margin:16px 0;flex-wrap:wrap}
-@media(max-width:480px){.day{min-height:75px}.event{font-size:9px}main{padding:8px}}
-</style>
-</head>
-<body>
-<header>
-<h1>Family Calendar</h1>
-<p>Your family's schedule, all in one place.</p>
-</header>
-<main>
-<nav>
-<button id="prev">&#10094;</button>
-<div id="month"></div>
-<button id="next">&#10095;</button>
-<button id="today">Today</button>
-</nav>
-<div id="calendar" class="calendar"></div>
-<div class="legend"><span>🔵 Shared</span><span>🟢 Private</span><span>🔴 Holidays</span></div>
-<button class="primary" id="newEvent">+ Add Event</button>
-<p style="font-size:12px;color:#666">Local preview — family syncing is not connected yet.</p>
-</main>
-<div id="overlay" class="overlay hidden">
-<section class="popup" role="dialog" aria-modal="true">
-<button class="close" id="close">✕</button>
-<h2 id="dateTitle"></h2>
-<div id="eventList"></div>
-<button class="primary" id="add" style="margin-top:15px">+ Add Event</button>
-<form id="form" class="hidden">
-<h3 id="formTitle">New Event</h3>
-<label>Event name<input id="eventName" required maxlength="150"></label>
-<label>Time (optional)<input id="eventTime" type="time"></label>
-<label>Calendar<select id="scope"><option value="shared">Shared Family Calendar</option><option value="private">Private Calendar</option></select></label>
-<label>Repeat<select id="repeat"><option value="none">Does not repeat</option><option value="daily">Every day</option><option value="weekly">Every week</option><option value="biweekly">Every two weeks</option><option value="monthly">Every month</option><option value="yearly">Every year</option></select></label>
-<label>Reminder (preview only)<select id="reminder"><option value="none">Off</option><option value="15">15 minutes before</option><option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="1440">1 day before</option><option value="10080">1 week before</option></select></label>
-<div class="actions"><button class="primary" type="submit">Save Event</button><button type="button" id="cancel">Cancel</button></div>
-</form>
-</section>
-</div>
-<script>
-const $=id=>document.getElementById(id);
-let events=[];
-try{events=JSON.parse(localStorage.getItem('familyCalendarEvents')||'[]')}catch(e){}
-let current=new Date();
-let year=current.getFullYear(),month=current.getMonth(),selected=new Date(),editing=null;
-const key=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-const parse=s=>new Date(s+'T00:00:00');
-const save=()=>{try{localStorage.setItem('familyCalendarEvents',JSON.stringify(events))}catch(e){alert('Unable to save on this device.')}};
-function nth(y,m,w,n){return 1+(w-new Date(y,m,1).getDay()+7)%7+7*(n-1)}
-function holidays(d){
-const y=d.getFullYear(),m=d.getMonth(),a=d.getDate();
-const h=[];
-const fixed={'0-1':"New Year's Day",'1-14':"Valentine's Day",'2-17':"St. Patrick's Day",'5-19':'Juneteenth','6-4':'Independence Day','9-31':'Halloween','10-11':'Veterans Day','11-24':'Christmas Eve','11-25':'Christmas Day','11-31':"New Year's Eve"};
-if(fixed[m+'-'+a])h.push(fixed[m+'-'+a]);
-if(m===0&&a===nth(y,0,1,3))h.push('Martin Luther King Jr. Day');
-if(m===1&&a===nth(y,1,1,3))h.push("Presidents' Day");
-if(m===4&&a===nth(y,4,0,2))h.push("Mother's Day");
-if(m===4&&a===31-(new Date(y,4,31).getDay()+6)%7)h.push('Memorial Day');
-if(m===5&&a===nth(y,5,0,3))h.push("Father's Day");
-if(m===8&&a===nth(y,8,1,1))h.push('Labor Day');
-if(m===9&&a===nth(y,9,1,2))h.push('Columbus Day / Indigenous Peoples Day');
-if(m===10&&a===nth(y,10,4,4))h.push('Thanksgiving');
-let A=y%19,B=Math.floor(y/100),C=y%100,D=Math.floor(B/4),E=B%4,F=Math.floor((B+8)/25),G=Math.floor((B-F+1)/3),H=(19*A+B-D-G+15)%30,I=Math.floor(C/4),K=C%4,L=(32+2*E+2*I-H-K)%7,M=Math.floor((A+11*H+22*L)/451),N=H+L-7*M+114;
-if(m===Math.floor(N/31)-1&&a===N%31+1)h.push('Easter');
-return h;
-}
-function matches(e,d){
-const s=parse(e.date);
-const days=Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())-Date.UTC(s.getFullYear(),s.getMonth(),s.getDate()))/86400000);
-if(days<0)return false;
-switch(e.repeat){
-case 'daily':return true;
-case 'weekly':return days%7===0;
-case 'biweekly':return days%14===0;
-case 'monthly':return d.getDate()===s.getDate();
-case 'yearly':return d.getMonth()===s.getMonth()&&d.getDate()===s.getDate();
-default:return key(d)===e.date;
-}}
-function element(tag,text,cls){
-const el=document.createElement(tag);
-if(text!==undefined)el.textContent=text;
-if(cls)el.className=cls;
-return el;
-}
-function render(){
-$('month').textContent=new Date(year,month,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
-const cal=$('calendar');cal.replaceChildren();
-['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(w=>cal.append(element('div',w,'weekday')));
-const first=new Date(year,month,1).getDay();
-const count=new Date(year,month+1,0).getDate();
-for(let i=0;i<Math.ceil((first+count)/7)*7;i++){
-const n=i-first+1,cell=element('div',undefined,'day');
-if(n>0&&n<=count){
-const d=new Date(year,month,n);
-if(key(d)===key(new Date()))cell.classList.add('today');
-cell.append(element('span',n,'number'));
-holidays(d).forEach(h=>cell.append(element('div',h,'event holiday')));
-const list=events.filter(e=>matches(e,d));
-list.slice(0,3).forEach(e=>cell.append(element('div',e.name,'event '+e.scope)));
-if(list.length>3)cell.append(element('div','+'+(list.length-3)+' more','event'));
-cell.onclick=()=>openDay(d);
-}
-cal.append(cell);
-}}
-function openDay(d){
-selected=d;editing=null;
-$('overlay').classList.remove('hidden');
-$('form').classList.add('hidden');
-$('add').classList.remove('hidden');
-$('dateTitle').textContent=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-const list=$('eventList');list.replaceChildren();
-holidays(d).forEach(h=>list.append(element('div',h,'entry holiday')));
-const items=events.filter(e=>matches(e,d));
-if(!items.length&&!holidays(d).length)list.append(element('p','No events scheduled.'));
-items.forEach(e=>{
-const row=element('div',undefined,'entry');
-row.append(element('strong',e.name));
-row.append(element('div',(e.time||'All day')+' • '+e.scope+' • '+(e.repeat==='none'?'One time':e.repeat)));
-const buttons=element('div',undefined,'actions');
-const edit=element('button','Edit');
-edit.onclick=()=>showForm(e);
-const del=element('button','Delete','danger');
-del.onclick=()=>{
-if(confirm(e.repeat==='none'?'Delete this event?':'Delete the entire repeating series?')){
-events=events.filter(x=>x.id!==e.id);save();render();openDay(selected);
-}};
-buttons.append(edit,del);row.append(buttons);list.append(row);
-});
-}
-function showForm(e){
-editing=e||null;
-$('form').classList.remove('hidden');
-$('add').classList.add('hidden');
-$('formTitle').textContent=e?'Edit Event':'New Event';
-$('eventName').value=e?e.name:'';
-$('eventTime').value=e?e.time:'';
-$('scope').value=e?e.scope:'shared';
-$('repeat').value=e?e.repeat:'none';
-$('reminder').value=e?e.reminder:'none';
-$('eventName').focus();
-}
-$('form').onsubmit=ev=>{
-ev.preventDefault();
-const name=$('eventName').value.trim();
-if(!name)return;
-const e={id:editing?editing.id:crypto.randomUUID(),date:editing?editing.date:key(selected),name,time:$('eventTime').value,scope:$('scope').value,repeat:$('repeat').value,reminder:$('reminder').value};
-events=editing?events.map(x=>x.id===e.id?e:x):[...events,e];
-save();render();openDay(selected);
-};
-$('prev').onclick=()=>{const d=new Date(year,month-1,1);year=d.getFullYear();month=d.getMonth();render()};
-$('next').onclick=()=>{const d=new Date(year,month+1,1);year=d.getFullYear();month=d.getMonth();render()};
-$('today').onclick=()=>{const d=new Date();year=d.getFullYear();month=d.getMonth();render()};
-$('close').onclick=()=>$('overlay').classList.add('hidden');
-$('overlay').onclick=e=>{if(e.target===$('overlay'))$('overlay').classList.add('hidden')};
-$('add').onclick=()=>showForm();
-$('cancel').onclick=()=>openDay(selected);
-$('newEvent').onclick=()=>{openDay(new Date(year,month,year===current.getFullYear()&&month===current.getMonth()?current.getDate():1));showForm()};
-render();
-</script>
-
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Family Calendar</title><style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f8fafd;color:#202124}header{background:white;padding:18px;border-bottom:1px solid #ddd}h1{margin:0 0 8px;font-size:24px}main{max-width:1000px;margin:auto;padding:12px}nav,.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between;margin:14px 0}button{cursor:pointer;border:0;border-radius:8px;padding:11px;background:#e8f0fe;color:#174ea6}.primary{background:#1a73e8;color:white}#month{font-weight:bold}.calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:white;border:1px solid #dadce0;border-radius:12px;overflow:hidden}.weekday{text-align:center;padding:12px 0;font-size:12px;color:#666}.day{min-height:85px;border-top:1px solid #ddd;border-right:1px solid #ddd;padding:5px;cursor:pointer;overflow:hidden}.number{display:inline-block;padding:5px;font-size:13px}.today .number{background:#1a73e8;color:white;border-radius:50%}.event{font-size:10px;background:#d2e3fc;color:#174ea6;border-radius:4px;padding:4px;margin:3px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.private{background:#ceead6;color:#137333}.holiday{background:#fce8e6;color:#b31412}.overlay{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}.hidden{display:none!important}.popup{background:white;border-radius:18px;padding:20px;width:100%;max-width:460px;max-height:90vh;overflow:auto;box-shadow:0 12px 40px #0003}label{display:block;font-size:14px;margin-top:12px}input,select{width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-top:5px}.entry{padding:12px 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere}.danger{color:#b31412;background:#fce8e6}.legend{display:flex;gap:16px;font-size:12px;margin:16px 0;flex-wrap:wrap}.muted{font-size:12px;color:#666}#message{color:#b31412;white-space:pre-wrap}@media(max-width:480px){.day{min-height:75px}.event{font-size:9px}main{padding:8px}}
+</style></head><body><header><h1>Family Calendar</h1><p>Your family's schedule, all in one place.</p><div class="actions"><button id="login">Sign in with Google</button><span id="identity">Not signed in</span></div><div id="familyControls" class="hidden"><p id="familyLabel"></p><label id="familyNameLabel">New family name<input id="familyName" maxlength="80" placeholder="Our family"></label><button id="createFamily" class="primary">Create family group</button><p class="muted">For now, adding family members requires the Firebase administrator. Never share a Firebase password or API secret.</p></div><p id="message" role="status"></p></header><main><nav><button id="prev">❮</button><div id="month"></div><button id="next">❯</button><button id="today">Today</button></nav><div id="calendar" class="calendar"></div><div class="legend"><span>🔵 Shared</span><span>🟢 Private</span><span>🔴 Holidays</span></div><button id="newEvent" class="primary">+ Add Event</button><p class="muted">Sign in to save events online. Shared events require membership in the same family group. Reminders are not yet active.</p></main><div id="overlay" class="overlay hidden"><section class="popup" role="dialog" aria-modal="true"><button id="close" style="float:right">✕</button><h2 id="dateTitle"></h2><div id="eventList"></div><button id="add" class="primary">+ Add Event</button><form id="form" class="hidden"><h3 id="formTitle">New Event</h3><label>Event name<input id="eventName" required maxlength="150"></label><label>Time (optional)<input id="eventTime" type="time"></label><label>Calendar<select id="scope"><option value="shared">Shared Family Calendar</option><option value="private">Private Calendar</option></select></label><label>Repeat<select id="repeat"><option value="none">Does not repeat</option><option value="daily">Every day</option><option value="weekly">Every week</option><option value="biweekly">Every two weeks</option><option value="monthly">Every month</option><option value="yearly">Every year</option></select></label><label>Reminder (not yet active)<select id="reminder"><option value="none">Off</option><option value="15">15 minutes before</option><option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="1440">1 day before</option><option value="10080">1 week before</option></select></label><div class="actions"><button type="submit" class="primary">Save Event</button><button type="button" id="cancel">Cancel</button></div></form></section></div>
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
-  onAuthStateChanged,
-  signOut
-} from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyDrDxq3AdsMhAc-OEG-0UnNPnBAMrrGofg",
-  authDomain: "family-calendar-7fd0e.firebaseapp.com",
-  projectId: "family-calendar-7fd0e",
-  storageBucket: "family-calendar-7fd0e.firebasestorage.app",
-  messagingSenderId: "628784102627",
-  appId: "1:628784102627:web:62699d6e6ea1ba606b19d6"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const provider = new GoogleAuthProvider();
-
-const panel = document.createElement("div");
-panel.style.cssText = "padding:12px;text-align:center;background:white";
-const button = document.createElement("button");
-button.textContent = "Sign in with Google";
-const status = document.createElement("p");
-status.textContent = "Not signed in";
-panel.append(button, status);
-document.querySelector("header").append(panel);
-
-button.addEventListener("click", async () => {
-  try {
-    if (auth.currentUser) {
-      await signOut(auth);
-    } else {
-      await signInWithPopup(auth, provider);
-    }
-  } catch (error) {
-    alert("Sign-in error: " + error.message);
-  }
-});
-
-onAuthStateChanged(auth, user => {
-  status.textContent = user
-    ? "Signed in as " + (user.displayName || user.email)
-    : "Not signed in";
-  button.textContent = user ? "Sign out" : "Sign in with Google";
-});
-</script>
-
-</body>
-</html>
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
+import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
+import {getFirestore,doc,collection,addDoc,setDoc,getDoc,query,where,getDocs,onSnapshot,serverTimestamp,updateDoc,deleteDoc} from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
+const firebaseConfig={apiKey:'AIzaSyDrDxq3AdsMhAc-OEG-0UnNPnBAMrrGofg',authDomain:'family-calendar-7fd0e.firebaseapp.com',projectId:'family-calendar-7fd0e',storageBucket:'family-calendar-7fd0e.firebasestorage.app',messagingSenderId:'628784102627',appId:'1:628784102627:web:62699d6e6ea1ba606b19d6'};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),provider=new GoogleAuthProvider(),$=id=>document.getElementById(id);
+let user=null,familyId=null,privateEvents=[],sharedEvents=[],unsubs=[],year=new Date().getFullYear(),month=new Date().getMonth(),selected=new Date(),editing=null;
+const key=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),parse=s=>new Date(s+'T00:00:00'),events=()=>[...privateEvents,...sharedEvents];
+const msg=t=>{$('message').textContent=t||''};
+const nth=(y,m,w,n)=>1+(w-new Date(y,m,1).getDay()+7)%7+7*(n-1);
+function holidays(d){const y=d.getFullYear(),m=d.getMonth(),a=d.getDate(),h=[],fixed={'0-1':"New Year's Day",'1-14':"Valentine's Day",'2-17':"St. Patrick's Day",'5-19':'Juneteenth','6-4':'Independence Day','9-31':'Halloween','10-11':"Veterans Day",'11-24':'Christmas Eve','11-25':'Christmas Day','11-31':"New Year's Eve"};if(fixed[m+'-'+a])h.push(fixed[m+'-'+a]);if(m===0&&a===nth(y,0,1,3))h.push('Martin Luther King Jr. Day');if(m===1&&a===nth(y,1,1,3))h.push("Presidents' Day");if(m===4&&a===nth(y,4,0,2))h.push("Mother's Day");if(m===4&&a===31-(new Date(y,4,31).getDay()+6)%7)h.push('Memorial Day');if(m===5&&a===nth(y,5,0,3))h.push("Father's Day");if(m===8&&a===nth(y,8,1,1))h.push('Labor Day');if(m===9&&a===nth(y,9,1,2))h.push('Columbus Day / Indigenous Peoples Day');if(m===10&&a===nth(y,10,4,4))h.push('Thanksgiving');let A=y%19,B=Math.floor(y/100),C=y%100,D=Math.floor(B/4),E=B%4,F=Math.floor((B+8)/25),G=Math.floor((B-F+1)/3),H=(19*A+B-D-G+15)%30,I=Math.floor(C/4),K=C%4,L=(32+2*E+2*I-H-K)%7,M=Math.floor((A+11*H+22*L)/451),N=H+L-7*M+114;if(m===Math.floor(N/31)-1&&a===N%31+1)h.push('Easter');return h;}
+function matches(e,d){const s=parse(e.date),days=Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())-Date.UTC(s.getFullYear(),s.getMonth(),s.getDate()))/86400000);if(days<0)return false;switch(e.repeat){case 'daily':return true;case 'weekly':return days%7===0;case 'biweekly':return days%14===0;case 'monthly':return d.getDate()===s.getDate();case 'yearly':return d.getMonth()===s.getMonth()&&d.getDate()===s.getDate();default:return key(d)===e.date}}
+function element(tag,text,cls){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;}
+function render(){$('month').textContent=new Date(year,month,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});const cal=$('calendar');cal.replaceChildren();['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(w=>cal.append(element('div',w,'weekday')));const first=new Date(year,month,1).getDay(),count=new Date(year,month+1,0).getDate();for(let i=0;i<Math.ceil((first+count)/7)*7;i++){const n=i-first+1,cell=element('div',undefined,'day');if(n>0&&n<=count){const d=new Date(year,month,n);if(key(d)===key(new Date()))cell.classList.add('today');cell.append(element('span',n,'number'));holidays(d).forEach(h=>cell.append(element('div',h,'event holiday')));const list=events().filter(e=>matches(e,d));list.slice(0,3).forEach(e=>cell.append(element('div',e.name,'event '+e.scope)));if(list.length>3)cell.append(element('div','+'+(list.length-3)+' more','event'));cell.onclick=()=>openDay(d);}cal.append(cell);}}
+function openDay(d){selected=d;editing=null;$('overlay').classList.remove('hidden');$('form').classList.add('hidden');$('add').classList.remove('hidden');$('dateTitle').textContent=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});const list=$('eventList');list.replaceChildren();holidays(d).forEach(h=>list.append(element('div',h,'entry holiday')));const items=events().filter(e=>matches(e,d));if(!items.length&&!holidays(d).length)list.append(element('p','No events scheduled.'));items.forEach(e=>{const row=element('div',undefined,'entry');row.append(element('strong',e.name));row.append(element('div',(e.time||'All day')+' • '+e.scope+' • '+(e.repeat==='none'?'One time':e.repeat)));const buttons=element('div',undefined,'actions'),edit=element('button','Edit'),del=element('button','Delete','danger');edit.onclick=()=>showForm(e);del.onclick=async()=>{if(!confirm(e.repeat==='none'?'Delete this event?':'Delete the entire repeating series?'))return;try{await deleteDoc(eventRef(e));openDay(selected)}catch(err){msg(err.message)}};buttons.append(edit,del);row.append(buttons);list.append(row)});}
+function showForm(e){if(!user){msg('Please sign in before adding an event.');return}editing=e||null;$('form').classList.remove('hidden');$('add').classList.add('hidden');$('formTitle').textContent=e?'Edit Event':'New Event';$('eventName').value=e?e.name:'';$('eventTime').value=e?e.time:'';$('scope').value=e?e.scope:(familyId?'shared':'private');$('repeat').value=e?e.repeat:'none';$('reminder').value=e?e.reminder:'none';$('scope').disabled=!!e;}
+function eventRef(e){return e.scope==='private'?doc(db,'users',user.uid,'events',e.id):doc(db,'families',familyId,'events',e.id)}
+$('form').onsubmit=async ev=>{ev.preventDefault();if(!user)return;const name=$('eventName').value.trim(),scope=$('scope').value;if(!name)return;if(scope==='shared'&&!familyId){msg('Create or join a family group before saving shared events.');return}const data={name,date:editing?editing.date:key(selected),time:$('eventTime').value,repeat:$('repeat').value,reminder:$('reminder').value};try{if(editing)await updateDoc(eventRef(editing),data);else if(scope==='private')await addDoc(collection(db,'users',user.uid,'events'),data);else await addDoc(collection(db,'families',familyId,'events'),{...data,createdBy:user.uid});$('form').classList.add('hidden');openDay(selected);msg('')}catch(err){msg('Could not save: '+err.message)}};
+function subscribe(){unsubs.forEach(fn=>fn());unsubs=[];privateEvents=[];sharedEvents=[];render();if(!user)return;unsubs.push(onSnapshot(collection(db,'users',user.uid,'events'),snap=>{privateEvents=snap.docs.map(d=>({id:d.id,...d.data(),scope:'private'}));render()},err=>msg('Private calendar: '+err.message)));if(familyId)unsubs.push(onSnapshot(collection(db,'families',familyId,'events'),snap=>{sharedEvents=snap.docs.map(d=>({id:d.id,...d.data(),scope:'shared'}));render()},err=>msg('Shared calendar: '+err.message)));}
+async function loadFamily(){familyId=null;if(!user)return;try{const p=await getDoc(doc(db,'users',user.uid,'profile','settings'));if(p.exists())familyId=p.data().familyId||null;if(familyId){const m=await getDoc(doc(db,'families',familyId,'members',user.uid));if(!m.exists())familyId=null}}catch(err){msg('Family setup: '+err.message)}$('familyControls').classList.toggle('hidden',!user);$('familyLabel').textContent=familyId?'Family group ID: '+familyId:'No family group yet';$('createFamily').classList.toggle('hidden',!!familyId);$('familyNameLabel').classList.toggle('hidden',!!familyId);subscribe();}
+$('createFamily').onclick=async()=>{if(!user||familyId)return;const name=$('familyName').value.trim()||'Our family';try{const ref=doc(collection(db,'families'));await setDoc(ref,{ownerUid:user.uid,name,createdAt:serverTimestamp()});await setDoc(doc(db,'families',ref.id,'members',user.uid),{joinedAt:serverTimestamp()});await setDoc(doc(db,'users',user.uid,'profile','settings'),{familyId:ref.id});await loadFamily();msg('Family group created. Other members must be added securely by the Firebase administrator before they can sync.')}catch(err){msg('Could not create family: '+err.message)}};
+$('login').onclick=async()=>{try{if(user)await signOut(auth);else await signInWithPopup(auth,provider)}catch(err){msg('Sign-in error: '+err.message)}};
+onAuthStateChanged(auth,async u=>{unsubs.forEach(fn=>fn());unsubs=[];user=u;$('identity').textContent=u?'Signed in as '+(u.displayName||u.email):'Not signed in';$('login').textContent=u?'Sign out':'Sign in with Google';msg('');await loadFamily()});
+$('prev').onclick=()=>{const d=new Date(year,month-1,1);year=d.getFullYear();month=d.getMonth();render()};$('next').onclick=()=>{const d=new Date(year,month+1,1);year=d.getFullYear();month=d.getMonth();render()};$('today').onclick=()=>{const d=new Date();year=d.getFullYear();month=d.getMonth();render()};$('close').onclick=()=>$('overlay').classList.add('hidden');$('overlay').onclick=e=>{if(e.target===$('overlay'))$('overlay').classList.add('hidden')};$('add').onclick=()=>showForm();$('cancel').onclick=()=>openDay(selected);$('newEvent').onclick=()=>{const d=new Date();openDay(new Date(year,month,year===d.getFullYear()&&month===d.getMonth()?d.getDate():1));showForm()};render();
+</script></body></html>
